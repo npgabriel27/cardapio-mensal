@@ -371,18 +371,11 @@
   }
 
   /* ── Calendar ── */
-  .month-block { margin-bottom: 2rem; }
-  .month-name {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text);
-    margin-bottom: 0.6rem;
-  }
-
   .cal-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     gap: 3px;
+    margin-bottom: 2rem;
   }
   .cal-dh {
     text-align: center;
@@ -394,12 +387,13 @@
     padding: 3px 0 6px;
   }
   .cal-day {
+    position: relative;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 5px 4px;
     min-height: 82px;
-    transition: border-color 0.12s;
+    transition: border-color 0.12s, outline-color 0.12s;
   }
   .cal-day:hover { border-color: var(--border-strong); }
   .cal-day.empty { background: transparent; border-color: transparent; }
@@ -408,7 +402,24 @@
   .cal-day.today .day-num { color: var(--accent); font-weight: 600; }
   .dow-mobile { display: none; }
 
-  .meal-slot { margin-bottom: 2px; }
+  /* Subtle inline month marker — no grid break, just a label + hairline.
+     Positioned absolutely so it never shifts grid/flow placement of the
+     day number or meal slots (incl. the mobile nth-child-free layout). */
+  .cal-day.month-start { border-top: 2px solid var(--accent); padding-top: 13px; }
+  .month-tag {
+    position: absolute;
+    top: 3px; left: 5px; right: 5px;
+    font-size: 7px;
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .meal-slot { margin-bottom: 2px; border-radius: 3px; }
   .meal-lbl { font-size: 7px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 1px; }
   .meal-pill {
     font-size: 7.5px;
@@ -421,8 +432,24 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .meal-pill[draggable-slot] { cursor: grab; touch-action: none; user-select: none; }
+  .meal-pill.dragging { opacity: 0.35; }
+  .meal-pill.delivery { border: 1px dashed currentColor; }
+  .delivery-badge { margin-right: 2px; }
   .meal-none { font-size: 7.5px; color: var(--text-3); font-style: italic; }
   .meal-empty { font-size: 7.5px; color: var(--border-strong); font-style: italic; }
+  .meal-noopt { font-size: 7.5px; color: var(--text-3); font-style: italic; }
+
+  /* Drag-and-drop */
+  .drag-ghost {
+    opacity: 0.9;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.28);
+    transform: scale(1.06);
+  }
+  .meal-slot.drop-target {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
 
   /* ── Legend ── */
   .legend {
@@ -437,13 +464,20 @@
   .leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-2); }
   .leg-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
 
-  /* ── Print ── */
+  /* ── Print ──
+     Only the calendar grid itself should print — everything above it
+     (header, tabs, date field, summary bar, action buttons, legend) is
+     hidden so the page starts at the calendar. */
   @media print {
     body { background: white; color: black; font-size: 10px; }
-    .tab-bar, .action-row, .ghost-btn, .primary-btn, .site-header button { display: none !important; }
-    .panel { display: block !important; }
+    .site-header, .tab-bar, .cal-controls, .summary-bar, .action-row, .legend {
+      display: none !important;
+    }
+    .panel { display: none !important; }
+    #panel-cal { display: block !important; }
     #panel-config { display: none !important; }
     .cal-day { min-height: 70px; border: 1px solid #ccc; }
+    .meal-slot.drop-target { outline: none; }
     .shell { padding: 0.5rem; max-width: 100%; }
     @page { size: A4 landscape; margin: 10mm; }
   }
@@ -478,7 +512,6 @@
     .legend { gap: 8px 12px; }
 
     /* Calendar becomes a readable single-column agenda instead of a 7-col grid */
-    .month-name { font-size: 15px; }
     .cal-grid { grid-template-columns: 1fr; gap: 8px; }
     .cal-dh { display: none; }
     .cal-day.empty { display: none; }
@@ -492,6 +525,8 @@
       padding: 10px 12px;
     }
     .cal-day.today { border-width: 2px; }
+    .cal-day.month-start { padding-top: 18px; }
+    .month-tag { left: 12px; right: 12px; }
     .day-num {
       grid-column: 1;
       grid-row: 1 / -1;
@@ -508,12 +543,12 @@
       font-weight: 600;
     }
     .cal-day.today .dow-mobile { color: var(--accent); }
-    .cal-day > .meal-slot:nth-child(2) { grid-column: 2; grid-row: 1; }
-    .cal-day > .meal-slot:nth-child(3) { grid-column: 2; grid-row: 2; }
+    .cal-day > .meal-slot[data-meal="al"] { grid-column: 2; grid-row: 1; }
+    .cal-day > .meal-slot[data-meal="jan"] { grid-column: 2; grid-row: 2; }
     .meal-slot { margin-bottom: 0; }
     .meal-lbl { font-size: 10.5px; margin-bottom: 3px; }
     .meal-pill { font-size: 13px; padding: 5px 9px; white-space: normal; }
-    .meal-none, .meal-empty { font-size: 12.5px; }
+    .meal-none, .meal-empty, .meal-noopt { font-size: 12.5px; }
   }
 
   @media (max-width: 380px) {
@@ -643,15 +678,15 @@ function getDays(start, count = 30) {
   return days;
 }
 
-// Count available al/jan slots across 30 days
+// Count available al/jan slots across 30 days (slots eligible for the
+// automatic pool distribution — "Sem opção" defaults are excluded).
 function countSlots(days) {
   let al = 0, jan = 0;
   days.forEach(d => {
     const dow = d.getDay();
-    if (dow === 6)      { al++; }          // Sab: só almoço
-    else if (dow === 0) { jan++; }          // Dom: só janta
-    else if (dow === 5) { al++; }          // Sex: almoço, janta = delivery
-    else                { al++; jan++; }
+    if (dow === 6)      { al++; }          // Sáb: almoço no pool, janta = Sem opção
+    else if (dow === 0) { /* Dom: al e jan = Sem opção */ }
+    else                { al++; jan++; }   // Seg-Sex (Sex janta = delivery, mas ainda no pool)
   });
   return { al, jan, total: al + jan };
 }
@@ -816,12 +851,12 @@ function spread(reshuffle = false) {
   const sJan = shuffle(janPool);
   let ai = 0, ji = 0;
 
+  // 'NOOPT' = "Sem opção": blocked by default, but still a valid drag-and-drop target.
   calPlan = days.map(d => {
     const dow = d.getDay();
     let al = null, jan = null;
-    if (dow === 6)      { al = sAl[ai++] ?? null; }
-    else if (dow === 0) { jan = sJan[ji++] ?? null; }
-    else if (dow === 5) { al = sAl[ai++] ?? null; }
+    if (dow === 6)      { al = sAl[ai++] ?? null; jan = 'NOOPT'; }
+    else if (dow === 0) { al = 'NOOPT';           jan = 'NOOPT'; }
     else                { al = sAl[ai++] ?? null; jan = sJan[ji++] ?? null; }
     return { date: d, al, jan };
   });
@@ -842,6 +877,9 @@ function renderLegend() {
 }
 
 // ── Calendar render ────────────────────────────────────────────
+// Days flow as one continuous weekly grid — no visual break between
+// months. A month change is marked only by a subtle inline label on
+// that day's cell, never by restarting the grid.
 function renderCal() {
   const start = getStartDate();
   const container = document.getElementById('calContainer');
@@ -856,74 +894,164 @@ function renderCal() {
 
   const today = new Date(); today.setHours(0,0,0,0);
   const days = getDays(start);
-
-  // Group by month
-  const months = [];
-  let cur = null;
-  days.forEach((d, i) => {
-    const mk = d.getFullYear() * 100 + d.getMonth();
-    if (!cur || cur.key !== mk) { cur = { key: mk, date: d, days: [] }; months.push(cur); }
-    cur.days.push({ date: d, idx: i });
-  });
-
   const dayNames = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
-  let html = '';
+  const dowShortNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
-  months.forEach(m => {
-    const rawMn = m.date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-    const mn = rawMn.charAt(0).toUpperCase() + rawMn.slice(1);
-    html += `<div class="month-block"><p class="month-name">${mn}</p><div class="cal-grid">`;
-    dayNames.forEach(n => { html += `<div class="cal-dh">${n}</div>`; });
+  let html = '<div class="cal-grid">';
+  dayNames.forEach(n => { html += `<div class="cal-dh">${n}</div>`; });
 
-    const fd = dayOfWeekMon(m.days[0].date.getDay());
-    for (let e = 0; e < fd; e++) html += `<div class="cal-day empty"></div>`;
+  days.forEach((date, idx) => {
+    const isToday = date.getTime() === today.getTime();
+    const dow = date.getDay();
+    const isMonthStart = idx === 0 || date.getDate() === 1;
 
-    m.days.forEach(({ date, idx }) => {
-      const isToday = date.getTime() === today.getTime();
-      const dow = date.getDay();
-      const entry = calPlan ? calPlan[idx] : null;
-      const showAl = dow !== 0;
-      const showJan = dow !== 6 && dow !== 5;
+    let monthTagHtml = '';
+    if (isMonthStart) {
+      const rawMn = date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      monthTagHtml = `<div class="month-tag">${rawMn.charAt(0).toUpperCase() + rawMn.slice(1)}</div>`;
+    }
 
-      let alHtml = '', janHtml = '';
-      if (showAl) {
-        const did = entry?.al ?? null;
-        const dish = did ? dishes.find(d => d.id === did) : null;
-        const c = dish ? PALETTE[dish.color] : null;
-        alHtml = `<div class="meal-slot">
-          <div class="meal-lbl">almoço</div>
-          ${dish
-            ? `<span class="meal-pill" style="background:${c.bg};color:${c.text}">${escHtml(dish.name)}</span>`
-            : `<span class="${calPlan ? 'meal-none' : 'meal-empty'}">${calPlan ? '—' : '···'}</span>`
-          }</div>`;
-      }
-      if (showJan) {
-        const did = entry?.jan ?? null;
-        const dish = did ? dishes.find(d => d.id === did) : null;
-        const c = dish ? PALETTE[dish.color] : null;
-        janHtml = `<div class="meal-slot">
-          <div class="meal-lbl">janta</div>
-          ${dish
-            ? `<span class="meal-pill" style="background:${c.bg};color:${c.text}">${escHtml(dish.name)}</span>`
-            : `<span class="${calPlan ? 'meal-none' : 'meal-empty'}">${calPlan ? '—' : '···'}</span>`
-          }</div>`;
-      }
+    const alHtml = renderMealSlot(idx, 'al', date, 'almoço');
+    const janHtml = renderMealSlot(idx, 'jan', date, 'janta');
 
-      const dowShort = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][dow];
-      html += `<div class="cal-day${isToday ? ' today' : ''}">
-        <div class="day-num"><span class="dow-mobile">${dowShort}</span>${date.getDate()}</div>
-        ${alHtml}${janHtml}
-      </div>`;
-    });
-
-    const ld = dayOfWeekMon(m.days[m.days.length - 1].date.getDay());
-    for (let e = 0; e < (ld < 6 ? 6 - ld : 0); e++) html += `<div class="cal-day empty"></div>`;
-    html += '</div></div>';
+    const dowShort = dowShortNames[dow];
+    html += `<div class="cal-day${isToday ? ' today' : ''}${isMonthStart ? ' month-start' : ''}">
+      ${monthTagHtml}
+      <div class="day-num"><span class="dow-mobile">${dowShort}</span>${date.getDate()}</div>
+      ${alHtml}${janHtml}
+    </div>`;
   });
+
+  const ld = dayOfWeekMon(days[days.length - 1].getDay());
+  for (let e = 0; e < (ld < 6 ? 6 - ld : 0); e++) html += `<div class="cal-day empty"></div>`;
+  html += '</div>';
 
   container.innerHTML = html;
+  enableCalDragAndDrop();
   updateSummary();
   renderLegend();
+}
+
+function renderMealSlot(dayIdx, meal, date, label) {
+  const entry = calPlan ? calPlan[dayIdx] : null;
+  const val = entry ? entry[meal] : null;
+  const isDelivery = date.getDay() === 5 && meal === 'jan';
+  let inner;
+
+  if (val === 'NOOPT') {
+    inner = `<span class="meal-noopt">Sem opção</span>`;
+  } else {
+    const dish = val ? dishes.find(d => d.id === val) : null;
+    if (dish) {
+      const c = PALETTE[dish.color];
+      inner = `<span class="meal-pill${isDelivery ? ' delivery' : ''}" draggable-slot
+        data-day="${dayIdx}" data-meal="${meal}"
+        style="background:${c.bg};color:${c.text}">${isDelivery ? '<span class="delivery-badge" title="Delivery">🛵</span>' : ''}${escHtml(dish.name)}</span>`;
+    } else {
+      inner = `<span class="${calPlan ? 'meal-none' : 'meal-empty'}">${calPlan ? '—' : '···'}</span>`;
+    }
+  }
+
+  return `<div class="meal-slot" data-day="${dayIdx}" data-meal="${meal}">
+    <div class="meal-lbl">${label}</div>
+    ${inner}
+  </div>`;
+}
+
+// ── Drag-and-drop (mouse + touch via Pointer Events) ─────────────
+let dragState = null;
+
+function enableCalDragAndDrop() {
+  document.querySelectorAll('#calContainer .meal-pill[draggable-slot]').forEach(el => {
+    el.addEventListener('pointerdown', onDragPointerDown);
+  });
+}
+
+function onDragPointerDown(e) {
+  if (!calPlan) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const pill = e.currentTarget;
+  e.preventDefault();
+
+  const rect = pill.getBoundingClientRect();
+  const ghost = pill.cloneNode(true);
+  ghost.classList.add('drag-ghost');
+  ghost.removeAttribute('draggable-slot');
+  ghost.style.position = 'fixed';
+  ghost.style.width = rect.width + 'px';
+  ghost.style.left = rect.left + 'px';
+  ghost.style.top = rect.top + 'px';
+  ghost.style.pointerEvents = 'none';
+  ghost.style.zIndex = '1000';
+  document.body.appendChild(ghost);
+
+  pill.classList.add('dragging');
+
+  dragState = {
+    srcDay: +pill.dataset.day,
+    srcMeal: pill.dataset.meal,
+    pill, ghost,
+    offsetX: e.clientX - rect.left,
+    offsetY: e.clientY - rect.top,
+    lastTarget: null,
+  };
+
+  pill.setPointerCapture(e.pointerId);
+  pill.addEventListener('pointermove', onDragPointerMove);
+  pill.addEventListener('pointerup', onDragPointerUp);
+  pill.addEventListener('pointercancel', onDragPointerUp);
+}
+
+function onDragPointerMove(e) {
+  if (!dragState) return;
+  const { ghost, offsetX, offsetY } = dragState;
+  ghost.style.left = (e.clientX - offsetX) + 'px';
+  ghost.style.top = (e.clientY - offsetY) + 'px';
+
+  ghost.style.display = 'none';
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  ghost.style.display = '';
+  const slot = under ? under.closest('.meal-slot') : null;
+
+  if (dragState.lastTarget && dragState.lastTarget !== slot) {
+    dragState.lastTarget.classList.remove('drop-target');
+  }
+  if (slot) slot.classList.add('drop-target');
+  dragState.lastTarget = slot;
+}
+
+function onDragPointerUp(e) {
+  if (!dragState) return;
+  const { pill, ghost, srcDay, srcMeal, lastTarget } = dragState;
+  pill.removeEventListener('pointermove', onDragPointerMove);
+  pill.removeEventListener('pointerup', onDragPointerUp);
+  pill.removeEventListener('pointercancel', onDragPointerUp);
+  try { pill.releasePointerCapture(e.pointerId); } catch (_) {}
+  ghost.remove();
+  pill.classList.remove('dragging');
+  if (lastTarget) lastTarget.classList.remove('drop-target');
+
+  if (lastTarget) {
+    const dstDay = +lastTarget.dataset.day;
+    const dstMeal = lastTarget.dataset.meal;
+    if (dstDay !== srcDay || dstMeal !== srcMeal) {
+      swapSlots(srcDay, srcMeal, dstDay, dstMeal);
+    }
+  }
+  dragState = null;
+}
+
+// Swaps two slots' contents. Dropping onto an empty or "Sem opção" slot
+// simply moves the dish there (the source becomes empty rather than
+// inheriting the "Sem opção" marker).
+function swapSlots(srcDay, srcMeal, dstDay, dstMeal) {
+  const srcEntry = calPlan[srcDay];
+  const dstEntry = calPlan[dstDay];
+  const srcVal = srcEntry[srcMeal];
+  const dstVal = dstEntry[dstMeal];
+  srcEntry[srcMeal] = (dstVal === 'NOOPT') ? null : dstVal;
+  dstEntry[dstMeal] = srcVal;
+  renderCal();
 }
 
 // ── Init ───────────────────────────────────────────────────────
