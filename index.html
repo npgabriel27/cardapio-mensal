@@ -5,10 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Cardápio Mensal</title>
 <meta name="description" content="Organize e distribua os pratos do cardápio mensal em almoços e jantas.">
+<!-- Cor da barra do navegador/SO quando o app roda instalado (PWA) -->
 <meta name="theme-color" content="#f5f4f0" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#181714" media="(prefers-color-scheme: dark)">
 
-<!-- PWA -->
+<!-- PWA: permite "instalar" esta página como um app (ícone, tela cheia,
+     funciona offline graças ao service worker registrado no fim do <script>) -->
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
@@ -17,25 +19,38 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Cardápio">
 <style>
+  /* ────────────────────────────────────────────────────────────
+     DESIGN TOKENS (variáveis CSS)
+     Em vez de espalhar cores fixas pelas regras abaixo, cada
+     elemento referencia var(--nome). Isso tem uma vantagem grande:
+     para trocar o tema inteiro (claro → escuro) basta redefinir
+     essas mesmas variáveis uma única vez, dentro do
+     @media (prefers-color-scheme: dark) logo a seguir — nenhuma
+     outra regra do arquivo precisa mudar.
+     ──────────────────────────────────────────────────────────── */
   :root {
-    --bg: #f5f4f0;
-    --surface: #ffffff;
-    --surface-alt: #f0ede8;
-    --border: #e0ddd7;
-    --border-strong: #c8c4bc;
-    --text: #1c1b18;
-    --text-2: #5c5a55;
-    --text-3: #9c9a94;
-    --accent: #2563eb;
-    --accent-bg: #eff6ff;
-    --danger: #dc2626;
-    --warn-bg: #fef9c3;
-    --warn-text: #854d0e;
-    --radius: 8px;
-    --radius-sm: 5px;
+    --bg: #f5f4f0;             /* fundo da página inteira */
+    --surface: #ffffff;        /* fundo de cards/inputs — uma camada acima do bg */
+    --surface-alt: #f0ede8;    /* fundo alternativo (hover, área de "novo prato") */
+    --border: #e0ddd7;         /* bordas discretas */
+    --border-strong: #c8c4bc;  /* bordas com mais contraste (botões, inputs) */
+    --text: #1c1b18;           /* texto principal */
+    --text-2: #5c5a55;         /* texto secundário (rótulos, legendas) */
+    --text-3: #9c9a94;         /* texto terciário, bem apagado */
+    --accent: #2563eb;         /* cor de destaque: dia de hoje, foco, links */
+    --accent-bg: #eff6ff;      /* fundo suave combinando com --accent */
+    --danger: #dc2626;         /* ações destrutivas (botão de remover prato) */
+    --warn-bg: #fef9c3;        /* fundo do aviso "sobrou/faltou prato" */
+    --warn-text: #854d0e;      /* texto desse aviso */
+    --radius: 8px;             /* raio de borda padrão (cards) */
+    --radius-sm: 5px;          /* raio de borda menor (inputs/botões) */
     --font: -apple-system, 'Segoe UI', system-ui, sans-serif;
   }
 
+  /* Quando o sistema operacional está em modo escuro, o navegador
+     casa com esta media query e sobrescreve as MESMAS variáveis
+     com tons escuros. Todo o resto do CSS continua igual — ele só
+     enxerga var(--bg), var(--text) etc., nunca a cor final. */
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #181714;
@@ -53,6 +68,12 @@
     }
   }
 
+  /* Reset básico:
+     - zera margin/padding padrão que cada navegador aplica de forma diferente;
+     - box-sizing: border-box faz padding e border contarem DENTRO da
+       largura/altura declarada, então "width: 100%; padding: 10px" não
+       estoura o container — sem isso, teríamos que subtrair o padding
+       manualmente em várias larguras espalhadas pelo arquivo. */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
@@ -64,7 +85,11 @@
     line-height: 1.5;
   }
 
-  /* ── Layout ── */
+  /* ── Layout ──
+     .shell é o "miolo" da página: centraliza o conteúdo até 900px
+     e usa env(safe-area-inset-*) para respeitar recortes de tela
+     (notch do iPhone, barra de gestos) quando o app roda instalado
+     em tela cheia — sem isso o conteúdo ficaria colado/atrás deles. */
   .shell {
     max-width: 900px;
     margin: 0 auto;
@@ -98,7 +123,11 @@
     margin-top: 2px;
   }
 
-  /* ── Tabs ── */
+  /* ── Tabs ──
+     As duas "abas" (Configurar pratos / Calendário) não navegam
+     para outra página — são só botões que trocam qual .panel fica
+     visível via JS (função showTab). O CSS aqui só cuida da
+     aparência do botão ativo (linha inferior + texto mais escuro). */
   .tab-bar {
     display: flex;
     gap: 0;
@@ -121,11 +150,14 @@
   .tab-btn:hover { color: var(--text); }
   .tab-btn.active { color: var(--text); border-bottom-color: var(--text); font-weight: 500; }
 
-  /* ── Panels ── */
+  /* ── Panels ──
+     Cada aba tem um .panel; só o que tem a classe .active aparece.
+     Isso é o equivalente em CSS puro de um "if/else" de visibilidade —
+     o JS só alterna a classe, o CSS decide mostrar ou esconder. */
   .panel { display: none; }
   .panel.active { display: block; }
 
-  /* ── Cards ── */
+  /* ── Cards ── (bloco de estilo genérico, reaproveitável) */
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -142,7 +174,9 @@
     margin-bottom: 0.75rem;
   }
 
-  /* ── Dish list ── */
+  /* ── Dish list ──
+     Cada prato configurado na aba "Configurar pratos" vira um
+     .dish-item (ver renderDishes() no JS). */
   .dish-item {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -159,6 +193,8 @@
     gap: 10px;
     margin-bottom: 10px;
   }
+  /* Quadradinho colorido que identifica visualmente o prato — usa a
+     mesma cor (bg/text) que aparece depois no calendário e na legenda. */
   .dish-swatch {
     width: 14px;
     height: 14px;
@@ -171,6 +207,8 @@
     font-weight: 500;
     color: var(--text);
   }
+  /* Botão "×" de remover prato — sem fundo/borda, só muda de cor no hover
+     para sinalizar perigo (var(--danger)). */
   .icon-btn {
     background: none;
     border: none;
@@ -184,6 +222,7 @@
   }
   .icon-btn:hover { color: var(--danger); }
 
+  /* Duas colunas: "Refeição" (Almoço/Janta) de um lado, "Qtd. no mês" do outro */
   .dish-row2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -199,6 +238,8 @@
     letter-spacing: 0.3px;
   }
 
+  /* Botões tipo "pill" para Almoço/Janta — .on marca qual está ativo.
+     Um prato pode ter os dois ativos (aparece em ambas as refeições). */
   .toggle-group { display: flex; gap: 6px; }
   .tog {
     padding: 5px 12px;
@@ -218,6 +259,7 @@
     border-color: var(--text);
   }
 
+  /* Botões +/- de quantidade */
   .qty-row { display: flex; align-items: center; gap: 8px; }
   .qty-btn {
     width: 26px;
@@ -243,7 +285,9 @@
     color: var(--text);
   }
 
-  /* ── Add form ── */
+  /* ── Add form ──
+     Bloco tracejado no fim da lista de pratos, onde se cadastra um
+     prato novo (nome + cor). */
   .add-form {
     background: var(--surface-alt);
     border: 1px dashed var(--border-strong);
@@ -268,17 +312,43 @@
   }
   .text-input:focus { border-color: var(--accent); }
 
+  /* Fileira de "bolinhas" de cor para escolher a cor do novo prato.
+     Ver renderColorPick() no JS: ela desenha um .cpick por cor do
+     PALETTE, mais o botão especial .cpick-custom no final. */
   .color-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
   .cpick {
     width: 22px;
     height: 22px;
     border-radius: 4px;
-    border: 2px solid transparent;
+    border: 2px solid transparent; /* vira colorida (var(--text) do próprio tom) quando .sel */
     cursor: pointer;
     transition: transform 0.1s;
   }
   .cpick:hover { transform: scale(1.15); }
-  .cpick.sel { border-color: var(--text) !important; }
+  .cpick.sel { border-color: var(--text) !important; } /* marca a cor selecionada */
+
+  /* Botão "Mais cores…" (estilo "mais cores" do PowerPoint).
+     Truque: é um <label> com fundo em degradê arco-íris (conic-gradient)
+     contendo um <input type="color"> por cima, totalmente transparente
+     (opacity: 0) e maior que a área visível (inset negativo) — assim
+     qualquer clique no quadradinho colorido abre o seletor de cor
+     nativo do navegador/SO, sem precisarmos construir um seletor do zero. */
+  .cpick-custom {
+    position: relative;
+    display: flex;
+    background: conic-gradient(from 90deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+    overflow: hidden;
+  }
+  .cpick-custom input[type="color"] {
+    position: absolute;
+    inset: -4px;
+    width: calc(100% + 8px);
+    height: calc(100% + 8px);
+    padding: 0;
+    border: none;
+    opacity: 0;
+    cursor: pointer;
+  }
 
   .primary-btn {
     padding: 8px 16px;
@@ -313,10 +383,13 @@
     font-size: 12px;
     color: var(--danger);
     margin-top: 6px;
-    min-height: 16px;
+    min-height: 16px; /* reserva espaço para a mensagem não "empurrar" o layout quando aparece */
   }
 
-  /* ── Summary bar ── */
+  /* ── Summary bar ──
+     Faixa no topo da aba Calendário que mostra quantos slots de
+     almoço/janta existem no mês vs. quantos pratos foram configurados
+     (ver updateSummary() no JS). */
   .summary-bar {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -340,7 +413,7 @@
     font-weight: 500;
   }
 
-  /* ── Cal controls ── */
+  /* ── Cal controls ── (escolha da data de início do mês exibido) */
   .cal-controls {
     display: flex;
     flex-wrap: wrap;
@@ -370,14 +443,16 @@
     margin-bottom: 1.25rem;
   }
 
-  /* ── Calendar ── */
+  /* ── Calendar ──
+     Grade de 7 colunas (uma por dia da semana). No mobile ela vira
+     uma lista de 1 coluna — ver @media (max-width: 680px) mais abaixo. */
   .cal-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     gap: 3px;
     margin-bottom: 2rem;
   }
-  .cal-dh {
+  .cal-dh { /* cabeçalho SEG/TER/QUA... */
     text-align: center;
     font-size: 9px;
     font-weight: 600;
@@ -387,7 +462,7 @@
     padding: 3px 0 6px;
   }
   .cal-day {
-    position: relative;
+    position: relative; /* necessário para o .month-tag absoluto funcionar dentro dela */
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -396,15 +471,16 @@
     transition: border-color 0.12s, outline-color 0.12s;
   }
   .cal-day:hover { border-color: var(--border-strong); }
-  .cal-day.empty { background: transparent; border-color: transparent; }
+  .cal-day.empty { background: transparent; border-color: transparent; } /* preenche a última linha da grade */
   .cal-day.today { border-color: var(--accent); }
   .day-num { font-size: 10px; color: var(--text-3); margin-bottom: 3px; font-weight: 500; }
   .cal-day.today .day-num { color: var(--accent); font-weight: 600; }
-  .dow-mobile { display: none; }
+  .dow-mobile { display: none; } /* só aparece na versão mobile (agenda vertical) */
 
-  /* Subtle inline month marker — no grid break, just a label + hairline.
-     Positioned absolutely so it never shifts grid/flow placement of the
-     day number or meal slots (incl. the mobile nth-child-free layout). */
+  /* Marcador discreto de troca de mês: um rótulo + linha no topo da
+     célula, POSICIONADO DE FORMA ABSOLUTA para nunca empurrar/deslocar
+     o número do dia ou os slots de refeição — a grade continua fluindo
+     normalmente, sem "quebrar" visualmente entre um mês e outro. */
   .cal-day.month-start { border-top: 2px solid var(--accent); padding-top: 13px; }
   .month-tag {
     position: absolute;
@@ -419,6 +495,9 @@
     text-overflow: ellipsis;
   }
 
+  /* Cada dia tem dois .meal-slot (almoço e janta); dentro de cada um,
+     um .meal-pill colorido com o nome do prato (ou um texto neutro
+     tipo "Sem opção" / "—" quando não há prato ali). */
   .meal-slot { margin-bottom: 2px; border-radius: 3px; }
   .meal-lbl { font-size: 7px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 1px; }
   .meal-pill {
@@ -428,30 +507,29 @@
     padding: 2px 4px;
     line-height: 1.35;
     display: block;
-    white-space: nowrap;
+    white-space: nowrap;   /* nome longo é cortado com "…" em vez de quebrar linha */
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .meal-pill[draggable-slot] { cursor: grab; touch-action: none; user-select: none; }
-  .meal-pill.dragging { opacity: 0.35; }
-  .meal-pill.delivery { border: 1px dashed currentColor; }
-  .delivery-badge { margin-right: 2px; }
-  .meal-none { font-size: 7.5px; color: var(--text-3); font-style: italic; }
-  .meal-empty { font-size: 7.5px; color: var(--border-strong); font-style: italic; }
-  .meal-noopt { font-size: 7.5px; color: var(--text-3); font-style: italic; }
+  .meal-pill.dragging { opacity: 0.35; } /* pill de origem fica "fantasma" enquanto arrasta */
+  .meal-pill.delivery { border: 1px dashed currentColor; } /* marca a janta de sexta (delivery) */
+  .meal-none { font-size: 7.5px; color: var(--text-3); font-style: italic; }   /* slot vazio depois de distribuir */
+  .meal-empty { font-size: 7.5px; color: var(--border-strong); font-style: italic; } /* slot vazio antes de distribuir */
+  .meal-noopt { font-size: 7.5px; color: var(--text-3); font-style: italic; } /* "Sem opção" (fins de semana) */
 
-  /* Drag-and-drop */
-  .drag-ghost {
+  /* Drag-and-drop (ver onDragPointerDown/Move/Up no JS) */
+  .drag-ghost { /* cópia do pill que segue o dedo/mouse durante o arraste */
     opacity: 0.9;
     box-shadow: 0 6px 16px rgba(0,0,0,0.28);
     transform: scale(1.06);
   }
-  .meal-slot.drop-target {
+  .meal-slot.drop-target { /* realce do slot onde o pill vai cair se soltar agora */
     outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
 
-  /* ── Legend ── */
+  /* ── Legend ── (lista de pratos + cor, abaixo dos controles do calendário) */
   .legend {
     display: flex;
     flex-wrap: wrap;
@@ -464,26 +542,82 @@
   .leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-2); }
   .leg-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
 
+  /* ── Distribution bar (só aparece na impressão, ver @media print) ──
+     Barra empilhada mostrando quantas vezes cada prato aparece no mês
+     (quantidade + percentual), estilo "barra de proporção". Gerada por
+     renderDistribution() no JS e escondida na tela por padrão aqui. */
+  .print-dist { display: none; }
+  .dist-title { font-size: 12px; font-weight: 600; color: #333; margin-bottom: 6px; }
+  .dist-bar { display: flex; width: 100%; height: 30px; border-radius: 4px; overflow: hidden; }
+  .dist-seg { /* cada "fatia" da barra — a largura real vem do flex-basis inline (%) */
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #fff;
+    white-space: nowrap; overflow: hidden;
+  }
+  .dist-legend { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 10px; }
+  .dist-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #333; }
+  .dist-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
   /* ── Print ──
-     Only the calendar grid itself should print — everything above it
-     (header, tabs, date field, summary bar, action buttons, legend) is
-     hidden so the page starts at the calendar. */
+     Regras que só valem quando a página está sendo impressa (ou
+     exportada para PDF via Ctrl+P). Só o calendário deve aparecer —
+     tudo o que fica acima dele na tela (cabeçalho, abas, campo de
+     data, resumo, botões, legenda) é escondido para a página impressa
+     começar direto no calendário. */
   @media print {
-    body { background: white; color: black; font-size: 10px; }
+    /* Sem isto, navegadores com a opção "imprimir imagens de fundo"
+       desmarcada (o padrão em muitos casos) descartam toda cor de
+       fundo — inclusive o preenchimento dos pills e a barra de
+       distribuição inteira, que é feita só de cores de fundo. Isto
+       força o navegador a imprimir essas cores de qualquer forma. */
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body { background: white; color: black; font-size: 12px; }
     .site-header, .tab-bar, .cal-controls, .summary-bar, .action-row, .legend {
       display: none !important;
     }
     .panel { display: none !important; }
-    #panel-cal { display: block !important; }
+    #panel-cal { display: block !important; }   /* força a aba do calendário a aparecer mesmo se a de config estiver ativa */
     #panel-config { display: none !important; }
-    .cal-day { min-height: 70px; border: 1px solid #ccc; }
-    .meal-slot.drop-target { outline: none; }
+
+    /* A grade de 7 colunas (definida acima) é o que é impresso, mesmo
+       imprimindo a partir de uma tela estreita (celular) — o layout de
+       agenda vertical do @media screen abaixo é só para uso na tela.
+       Os line-heights são reduzidos por toda parte (o padrão de 1.5
+       do body desperdiça bastante espaço vertical nesses tamanhos de
+       fonte) para o texto maior e mais legível ainda caber em 1 página. */
+    .cal-grid { gap: 4px; margin-bottom: 0.75rem; }
+    .cal-dh { font-size: 12px; line-height: 1.2; padding: 3px 0 6px; }
+    .cal-day { min-height: 92px; border: 1px solid #ccc; padding: 5px 7px; }
+    .cal-day.month-start { padding-top: 12px; }
+    .day-num { font-size: 13.5px; line-height: 1.15; margin-bottom: 2px; }
+    .month-tag { font-size: 9px; }
+    .meal-slot { margin-bottom: 2px; }
+    .meal-lbl { font-size: 9.5px; line-height: 1.15; margin-bottom: 1px; }
+    .meal-pill {
+      font-size: 11.5px;
+      padding: 2.5px 6px;
+      line-height: 1.2;
+    }
+    .meal-none, .meal-empty, .meal-noopt { font-size: 11px; line-height: 1.2; }
+    .meal-slot.drop-target { outline: none; } /* não faz sentido imprimir o realce de drag-and-drop */
     .shell { padding: 0.5rem; max-width: 100%; }
+
+    .print-dist { display: block; } /* barra de distribuição só existe visualmente na impressão */
+    .dist-title { font-size: 12.5px; margin-bottom: 4px; }
+    .dist-bar { height: 26px; }
+    .dist-seg { font-size: 12px; }
+    .dist-legend { margin-top: 6px; }
+    .dist-item { font-size: 11.5px; }
+
     @page { size: A4 landscape; margin: 10mm; }
   }
 
-  /* ── Responsive (tablet & phone) ── */
-  @media (max-width: 680px) {
+  /* ── Responsive (tablet & phone) ──
+     Restrita a `screen` (não a `print`) de propósito: assim, imprimir
+     a partir de uma tela estreita continua usando a grade "desktop"
+     de 7 colunas definida acima / dentro de @media print, em vez desta
+     versão de agenda vertical (que é só para navegar na tela). */
+  @media screen and (max-width: 680px) {
     .shell { padding: 1rem 0.75rem 3rem; }
 
     .site-header { margin-bottom: 1.25rem; padding-bottom: 1rem; }
@@ -511,13 +645,18 @@
     .summary-bar { font-size: 12.5px; }
     .legend { gap: 8px 12px; }
 
-    /* Calendar becomes a readable single-column agenda instead of a 7-col grid */
+    /* Calendário vira uma agenda de coluna única (mais legível no
+       celular) em vez da grade de 7 colunas — repare que isso reusa
+       os MESMOS elementos HTML gerados por renderCal()/renderMealSlot(),
+       só reorganizados via grid-column/grid-row e display: none nos
+       elementos que não fazem sentido nesse layout (cabeçalho de dia
+       da semana, células vazias de preenchimento). */
     .cal-grid { grid-template-columns: 1fr; gap: 8px; }
     .cal-dh { display: none; }
     .cal-day.empty { display: none; }
     .cal-day {
       display: grid;
-      grid-template-columns: 52px 1fr;
+      grid-template-columns: 52px 1fr; /* coluna do número do dia + coluna das refeições */
       column-gap: 10px;
       row-gap: 6px;
       align-items: start;
@@ -529,12 +668,12 @@
     .month-tag { left: 12px; right: 12px; }
     .day-num {
       grid-column: 1;
-      grid-row: 1 / -1;
+      grid-row: 1 / -1; /* ocupa a altura toda da célula, alinhado com almoço + janta */
       font-size: 13px;
       line-height: 1.3;
       padding-top: 2px;
     }
-    .dow-mobile {
+    .dow-mobile { /* "SEG", "TER"... ao lado do número, já que o cabeçalho .cal-dh some */
       display: block;
       font-size: 10px;
       color: var(--text-3);
@@ -547,11 +686,11 @@
     .cal-day > .meal-slot[data-meal="jan"] { grid-column: 2; grid-row: 2; }
     .meal-slot { margin-bottom: 0; }
     .meal-lbl { font-size: 10.5px; margin-bottom: 3px; }
-    .meal-pill { font-size: 13px; padding: 5px 9px; white-space: normal; }
+    .meal-pill { font-size: 13px; padding: 5px 9px; white-space: normal; } /* pode quebrar linha — sobra espaço */
     .meal-none, .meal-empty, .meal-noopt { font-size: 12.5px; }
   }
 
-  @media (max-width: 380px) {
+  @media screen and (max-width: 380px) {
     .tab-btn { font-size: 13px; padding: 9px 6px; }
   }
 </style>
@@ -566,12 +705,17 @@
     </div>
   </header>
 
+  <!-- Os dois botões abaixo não são links — cada onclick chama showTab(),
+       que troca qual .panel abaixo recebe a classe .active (ver JS). -->
   <div class="tab-bar">
     <button class="tab-btn active" onclick="showTab('config')">Configurar pratos</button>
     <button class="tab-btn" onclick="showTab('cal')">Calendário</button>
   </div>
 
-  <!-- ── CONFIG PANEL ── -->
+  <!-- ── CONFIG PANEL ──
+       Aqui o usuário cadastra os pratos: nome, cor, se aparece no
+       almoço/janta e quantas vezes no mês. #dishList é preenchido
+       inteiramente via JS (renderDishes()) a partir do array `dishes`. -->
   <div class="panel active" id="panel-config">
     <p style="font-size:13px;color:var(--text-2);margin-bottom:1rem;">
       Defina os pratos, se aparecem no almoço, jantar ou ambos, e quantas vezes no mês.
@@ -586,12 +730,15 @@
         <input class="text-input" id="newName" placeholder="Nome do prato" maxlength="40">
         <button class="primary-btn" onclick="addDish()">Adicionar</button>
       </div>
+      <!-- Preenchido via JS por renderColorPick() -->
       <div class="color-row" id="colorPick"></div>
       <div class="err-msg" id="addErr"></div>
     </div>
   </div>
 
-  <!-- ── CALENDAR PANEL ── -->
+  <!-- ── CALENDAR PANEL ──
+       Onde os pratos configurados são distribuídos automaticamente
+       (ou manualmente, via drag-and-drop) pelos 30 dias do mês. -->
   <div class="panel" id="panel-cal">
     <div class="cal-controls">
       <span class="date-label">Início (segunda-feira):</span>
@@ -599,6 +746,7 @@
       <span class="date-err" id="dateErr"></span>
     </div>
 
+    <!-- Preenchido via JS por updateSummary() -->
     <div class="summary-bar" id="summaryBar">
       Escolha uma data de início para ver o resumo.
     </div>
@@ -611,6 +759,8 @@
 
     <div class="legend" id="legend"></div>
     <div id="calContainer"></div>
+    <!-- Só fica visível quando a página é impressa (ver .print-dist no CSS) -->
+    <div class="print-dist" id="printDist"></div>
   </div>
 
 </div>
@@ -618,21 +768,43 @@
 <script>
 'use strict';
 
+// ════════════════════════════════════════════════════════════════
+// MODELO DE DADOS
+// A página inteira funciona no padrão "estado → renderização":
+// as variáveis abaixo (PALETTE, dishes, calPlan...) guardam TUDO o
+// que existe; sempre que algo muda, uma função render*() reconstrói
+// o innerHTML correspondente a partir do zero. Não há nenhum banco
+// de dados nem localStorage — ao recarregar a página, tudo volta ao
+// estado inicial definido aqui embaixo.
+// ════════════════════════════════════════════════════════════════
+
 // ── Color palette ──────────────────────────────────────────────
+// Cada cor é um trio {bg, text, border}: bg = fundo claro do pill no
+// calendário, text = texto escuro legível sobre esse fundo (e borda
+// dos quadradinhos/bolinhas na lista de pratos e na legenda), border =
+// tom mais vivo, usado na barra de distribuição (impressão). O índice
+// de cada objeto neste array (0, 1, 2...) é o que fica guardado em
+// `dish.color` — por isso é um array e não um objeto nomeado.
 const PALETTE = [
-  { bg:'#E6F1FB', text:'#0C447C', border:'#85B7EB' },
-  { bg:'#EAF3DE', text:'#27500A', border:'#97C459' },
-  { bg:'#FAECE7', text:'#712B13', border:'#F0997B' },
-  { bg:'#FAEEDA', text:'#633806', border:'#FAC775' },
-  { bg:'#FBEAF0', text:'#72243E', border:'#ED93B1' },
-  { bg:'#EEEDFE', text:'#3C3489', border:'#AFA9EC' },
-  { bg:'#E1F5EE', text:'#085041', border:'#5DCAA5' },
-  { bg:'#FCEBEB', text:'#791F1F', border:'#F09595' },
-  { bg:'#FFF7ED', text:'#7C3D12', border:'#FDBA74' },
-  { bg:'#F0FDF4', text:'#14532D', border:'#86EFAC' },
+  { bg:'#BFDBFE', text:'#1E3A8A', border:'#3B82F6' }, // azul
+  { bg:'#BBF7D0', text:'#14532D', border:'#22C55E' }, // verde
+  { bg:'#FED7AA', text:'#7C2D12', border:'#F97316' }, // laranja
+  { bg:'#FDE68A', text:'#78350F', border:'#F59E0B' }, // âmbar
+  { bg:'#FBCFE8', text:'#831843', border:'#EC4899' }, // rosa
+  { bg:'#DDD6FE', text:'#4C1D95', border:'#8B5CF6' }, // roxo
+  { bg:'#99F6E4', text:'#134E4A', border:'#14B8A6' }, // verde-água
+  { bg:'#FECACA', text:'#7F1D1D', border:'#EF4444' }, // vermelho
+  { bg:'#A5F3FC', text:'#164E63', border:'#06B6D4' }, // ciano
+  { bg:'#D9F99D', text:'#365314', border:'#84CC16' }, // lima
 ];
 
 // ── State ──────────────────────────────────────────────────────
+// Lista de pratos cadastrados. Cada prato:
+//   id   → identificador único (usado no calendário e nos handlers de clique)
+//   name → nome exibido
+//   color → índice dentro de PALETTE
+//   al/jan → se o prato pode aparecer no almoço e/ou na janta
+//   qty  → quantas vezes por mês esse prato deve ser usado
 let dishes = [
   { id:1, name:'Frango grelhado',      color:0, al:true,  jan:true,  qty:8 },
   { id:2, name:'Filé de peixe',        color:1, al:true,  jan:false, qty:4 },
@@ -643,11 +815,17 @@ let dishes = [
   { id:7, name:'Pizza frigideira',     color:6, al:false, jan:true,  qty:4 },
   { id:8, name:'Carne em tiras',       color:2, al:true,  jan:true,  qty:3 },
 ];
-let nextId = 9;
-let selColor = 0;
-let calPlan = null; // array of {date, al: id|null, jan: id|null}
+let nextId = 9;      // próximo id a usar ao adicionar um prato (nunca reaproveita ids removidos)
+let selColor = 0;    // índice do PALETTE atualmente selecionado no formulário "Novo prato"
+let calPlan = null;  // null = ainda não distribuído; senão, array de {date, al: id|null|'NOOPT', jan: id|null|'NOOPT'}
 
 // ── Helpers ────────────────────────────────────────────────────
+
+// Embaralha um array sem alterar o original (Fisher-Yates shuffle):
+// percorre de trás para frente trocando cada posição por outra
+// sorteada entre 0 e a posição atual — é o jeito padrão de embaralhar
+// com distribuição uniforme (todo mundo tem a mesma chance de ficar
+// em qualquer posição).
 function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -657,17 +835,29 @@ function shuffle(arr) {
   return a;
 }
 
+// JS numera os dias da semana começando no domingo (0=Dom...6=Sáb),
+// mas o calendário aqui começa na segunda. Esta função converte para
+// "Segunda=0 ... Domingo=6", que é a ordem usada para montar a grade.
 function dayOfWeekMon(jsDay) { // Monday=0 … Sunday=6
   return jsDay === 0 ? 6 : jsDay - 1;
 }
 
+// Lê a data escolhida no campo <input type="date">. Só aceita se cair
+// numa segunda-feira (o calendário é sempre montado semana a semana a
+// partir de uma segunda) — devolve null caso contrário, e quem chamou
+// decide o que fazer (mostrar erro, não gerar calendário, etc.).
 function getStartDate() {
   const v = document.getElementById('startDate').value;
   if (!v) return null;
+  // 'T12:00:00' evita problemas de fuso horário: sem hora, o navegador
+  // interpretaria a data como meia-noite UTC, que em fusos negativos
+  // (como o do Brasil) "vira" o dia anterior no horário local.
   const d = new Date(v + 'T12:00:00');
   return d.getDay() === 1 ? d : null;
 }
 
+// Gera um array com `count` objetos Date consecutivos, começando em
+// `start` (usado para construir os 30 dias do mês exibido).
 function getDays(start, count = 30) {
   const days = [];
   for (let i = 0; i < count; i++) {
@@ -678,8 +868,12 @@ function getDays(start, count = 30) {
   return days;
 }
 
-// Count available al/jan slots across 30 days (slots eligible for the
-// automatic pool distribution — "Sem opção" defaults are excluded).
+// Conta quantos "slots" de almoço/janta existem nos 30 dias e que
+// SÃO elegíveis para a distribuição automática (sábado sem janta e
+// domingo inteiro contam como "Sem opção", não entram na conta).
+// Usado só para mostrar o resumo — a lógica real de distribuição está
+// duplicada (de propósito) dentro de spread(), porque lá ela também
+// precisa decidir o VALOR de cada slot, não só contá-los.
 function countSlots(days) {
   let al = 0, jan = 0;
   days.forEach(d => {
@@ -692,6 +886,11 @@ function countSlots(days) {
 }
 
 // ── Tab switching ──────────────────────────────────────────────
+// Chamada pelo onclick dos botões da .tab-bar. Marca o botão certo
+// como .active, mostra o .panel correspondente e, ao entrar na aba
+// do calendário, recalcula tudo que depende do estado atual (resumo,
+// legenda, grade) — importante porque o usuário pode ter mudado
+// pratos na outra aba enquanto o calendário estava escondido.
 function showTab(name) {
   document.querySelectorAll('.tab-btn').forEach((b, i) =>
     b.classList.toggle('active', (i === 0 && name === 'config') || (i === 1 && name === 'cal'))
@@ -702,18 +901,118 @@ function showTab(name) {
 }
 
 // ── Color picker ───────────────────────────────────────────────
+// Desenha as bolinhas de cor do formulário "Novo prato": uma por
+// entrada do PALETTE (marcando `selColor` como selecionada), mais o
+// botão especial "Mais cores…" no final.
 function renderColorPick() {
   const el = document.getElementById('colorPick');
-  el.innerHTML = PALETTE.map((c, i) =>
+  const swatches = PALETTE.map((c, i) =>
     `<div class="cpick${i === selColor ? ' sel' : ''}"
        style="background:${c.bg};border-color:${i === selColor ? c.text : 'transparent'}"
        onclick="pickColor(${i})" title="Cor ${i+1}"></div>`
   ).join('');
+  // "More colors…" (como no PowerPoint) — o próprio <input type="color">
+  // fica transparente por cima do quadradinho arco-íris (ver CSS
+  // .cpick-custom), então clicar nele abre o seletor de cor nativo do
+  // navegador/SO. Ao escolher uma cor, addCustomColor() é chamado com
+  // o valor hexadecimal escolhido.
+  const customBtn = `<label class="cpick cpick-custom" title="Mais cores…">
+    <input type="color" onchange="addCustomColor(this.value)">
+  </label>`;
+  el.innerHTML = swatches + customBtn;
 }
 
 function pickColor(i) { selColor = i; renderColorPick(); }
 
+// O <input type="color"> devolve só UM hexadecimal (ex: "#ff00aa"),
+// mas o resto do app espera um trio {bg, text, border} como os do
+// PALETTE. Esta função "fabrica" esse trio a partir da cor escolhida,
+// convertendo para HSL (matiz/saturação/luminosidade) e gerando três
+// variações de luminosidade da MESMA cor:
+//   - bg:     bem clara (luminosidade 85%) → fundo do pill
+//   - text:   bem escura (luminosidade 25%) → texto legível sobre o bg
+//   - border: tom médio (luminosidade 50%) → usado na barra de distribuição
+// Isso garante que qualquer cor escolhida pelo usuário "combine" com o
+// resto do app, tenha ela sido escolhida clara, escura ou saturada.
+function deriveSwatch(hex) {
+  const [h, s] = hexToHsl(hex);
+  const sat = Math.max(s, 55); // evita cores quase cinzas (baixa saturação) ficarem sem graça
+  return {
+    bg: hslToHex(h, Math.max(sat - 15, 35), 85),
+    text: hslToHex(h, Math.min(sat + 10, 90), 25),
+    border: hslToHex(h, sat, 50),
+  };
+}
+
+// Chamado quando o usuário confirma uma cor no seletor nativo:
+// adiciona o novo trio de cores ao final do PALETTE (agora ele também
+// pode ser escolhido depois, como qualquer cor pré-definida) e já
+// seleciona essa cor recém-criada para o próximo prato.
+function addCustomColor(hex) {
+  PALETTE.push(deriveSwatch(hex));
+  selColor = PALETTE.length - 1;
+  renderColorPick();
+}
+
+// Converte uma cor hexadecimal ("#rrggbb") para HSL: matiz (0-360°),
+// saturação e luminosidade (0-100%). É a fórmula padrão de conversão
+// RGB→HSL: acha o maior e o menor canal de cor, usa a diferença entre
+// eles para saturação, e a posição do maior canal define o matiz.
+function hexToHsl(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d !== 0) {
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return [h * 360, s * 100, l * 100];
+}
+
+// O caminho inverso de hexToHsl: recebe matiz/saturação/luminosidade
+// e devolve o hexadecimal correspondente. Usada por deriveSwatch()
+// para "recolorir" a mesma cor em luminosidades diferentes.
+function hslToHex(h, s, l) {
+  h /= 360; s /= 100; l /= 100;
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l; // sem saturação = tom de cinza
+  } else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+  const toHex = x => Math.round(x * 255).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
 // ── Dish CRUD ──────────────────────────────────────────────────
+// (CRUD = Create/Read/Update/Delete — as operações básicas sobre a
+// lista `dishes`.)
+
+// Lê o nome digitado, valida (não vazio, não duplicado) e, se ok,
+// cria o prato com a cor atualmente selecionada. `calPlan = null`
+// invalida qualquer distribuição já feita no calendário, porque ela
+// não conhece esse prato novo — obriga o usuário a redistribuir.
 function addDish() {
   const nm = document.getElementById('newName').value.trim();
   const err = document.getElementById('addErr');
@@ -734,6 +1033,10 @@ function delDish(id) {
   renderDishes();
 }
 
+// Liga/desliga se o prato aparece no almoço ('al') ou na janta ('jan').
+// A trava `if (d[which] && !d[other]) return;` impede desligar a ÚLTIMA
+// refeição ativa — um prato sempre precisa poder aparecer em pelo menos
+// uma delas, senão ele nunca seria sorteado para lugar nenhum.
 function toggleMeal(id, which) {
   const d = dishes.find(x => x.id === id);
   if (!d) return;
@@ -744,6 +1047,7 @@ function toggleMeal(id, which) {
   renderDishes();
 }
 
+// +1/-1 na quantidade mensal do prato, sempre entre 0 e 60.
 function changeQty(id, delta) {
   const d = dishes.find(x => x.id === id);
   if (!d) return;
@@ -753,6 +1057,11 @@ function changeQty(id, delta) {
   updateSummary();
 }
 
+// Reconstrói a lista de pratos (#dishList) do zero a partir do array
+// `dishes`. Este é o padrão usado em toda a página: em vez de tentar
+// atualizar só o pedacinho de HTML que mudou, é mais simples e menos
+// propenso a erro apagar tudo e desenhar de novo com o estado atual —
+// o "custo" disso é imperceptível para uma lista deste tamanho.
 function renderDishes() {
   const el = document.getElementById('dishList');
   el.innerHTML = dishes.map(d => {
@@ -785,11 +1094,18 @@ function renderDishes() {
   renderColorPick();
 }
 
+// Escapa caracteres especiais de HTML (&, <, >, ") antes de inserir
+// texto do usuário (nome do prato) dentro de innerHTML. Sem isso, um
+// nome de prato como "<b>Teste</b>" ou contendo aspas quebraria o
+// HTML gerado ou (em outros contextos) abriria brecha para XSS.
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ── Summary bar ────────────────────────────────────────────────
+// Atualiza a faixa de resumo no topo da aba Calendário: quantos
+// slots existem no mês vs. quantos pratos (quantidade total) foram
+// configurados, e um aviso se os números não baterem.
 function updateSummary() {
   const bar = document.getElementById('summaryBar');
   const start = getStartDate();
@@ -823,7 +1139,16 @@ function updateSummary() {
 }
 
 // ── Spread algorithm ───────────────────────────────────────────
+// Distribui os pratos pelos 30 dias do mês. A ideia central é criar
+// duas "piscinas" (pools) de IDs de prato — uma para almoço, outra
+// para janta —, embaralhá-las e ir puxando um ID por vez para cada
+// slot do calendário. Um prato que aparece 8x no mês entra 8 vezes
+// no pool correspondente, o que faz ele ter 8x mais chance de cair em
+// mais posições (e, em média, realmente aparecer ~8 vezes).
 function spread(reshuffle = false) {
+  // Se já existe uma distribuição e não foi pedido para embaralhar de
+  // novo (botão "Redistribuir"), não faz nada — evita perder um
+  // arranjo manual (drag-and-drop) sem querer ao clicar duas vezes.
   if (calPlan && !reshuffle) return;
   const start = getStartDate();
   if (!start) return;
@@ -834,7 +1159,8 @@ function spread(reshuffle = false) {
   const janPool = [];
   dishes.forEach(d => {
     if (d.al && d.jan) {
-      // Split roughly half/half, bias toward al if odd
+      // Prato aparece nas duas refeições: divide a quantidade ~meio a
+      // meio entre os dois pools (arredondando o excedente para o almoço).
       const halfAl = Math.ceil(d.qty / 2);
       const halfJan = Math.floor(d.qty / 2);
       for (let i = 0; i < halfAl; i++) alPool.push(d.id);
@@ -849,15 +1175,19 @@ function spread(reshuffle = false) {
   // Shuffle pools and assign
   const sAl = shuffle(alPool);
   const sJan = shuffle(janPool);
-  let ai = 0, ji = 0;
+  let ai = 0, ji = 0; // ponteiros: próximo item não usado de cada pool embaralhado
 
-  // 'NOOPT' = "Sem opção": blocked by default, but still a valid drag-and-drop target.
+  // 'NOOPT' = "Sem opção": bloqueado por padrão, mas ainda é um alvo
+  // válido para arrastar um prato manualmente depois (ver swapSlots).
   calPlan = days.map(d => {
     const dow = d.getDay();
     let al = null, jan = null;
-    if (dow === 6)      { al = sAl[ai++] ?? null; jan = 'NOOPT'; }
-    else if (dow === 0) { al = 'NOOPT';           jan = 'NOOPT'; }
-    else                { al = sAl[ai++] ?? null; jan = sJan[ji++] ?? null; }
+    if (dow === 6)      { al = sAl[ai++] ?? null; jan = 'NOOPT'; }               // sábado: só almoço
+    else if (dow === 0) { al = 'NOOPT';           jan = 'NOOPT'; }               // domingo: nenhum
+    else                { al = sAl[ai++] ?? null; jan = sJan[ji++] ?? null; }    // seg-sex: os dois
+    // `sAl[ai++] ?? null`: se o pool acabar antes dos dias (poucos
+    // pratos configurados para muitos slots), o slot fica null (vazio)
+    // em vez de gerar erro.
     return { date: d, al, jan };
   });
 
@@ -865,6 +1195,9 @@ function spread(reshuffle = false) {
 }
 
 // ── Legend ─────────────────────────────────────────────────────
+// Lista "bolinha colorida + nome" de todos os pratos, exibida acima
+// do calendário na tela (escondida na impressão — lá quem cumpre esse
+// papel é a barra de distribuição, mais completa).
 function renderLegend() {
   const el = document.getElementById('legend');
   el.innerHTML = dishes.map(d => {
@@ -874,6 +1207,43 @@ function renderLegend() {
       <span>${escHtml(d.name)}</span>
     </span>`;
   }).join('');
+}
+
+// ── Distribution bar (print only) ───────────────────────────────
+// Mostra como o total de quantidade do mês se divide entre os pratos —
+// uma barra empilhada (uma fatia colorida por prato, com a contagem
+// dentro) mais uma legenda com nome/quantidade/percentual. Só fica
+// visível na página impressa (ver .print-dist no @media print).
+function renderDistribution() {
+  const el = document.getElementById('printDist');
+  if (!el) return;
+  const active = dishes.filter(d => d.qty > 0); // ignora pratos com quantidade zerada
+  const total = active.reduce((s, d) => s + d.qty, 0);
+  if (total <= 0) { el.innerHTML = ''; return; }
+
+  // Cada fatia usa flex-basis em porcentagem — como estão todas dentro
+  // de um container display:flex (.dist-bar), a soma das porcentagens
+  // (que sempre dá 100%, pois vêm do mesmo `total`) faz a barra inteira
+  // ser preenchida proporcionalmente à quantidade de cada prato.
+  const bar = active.map(d => {
+    const c = PALETTE[d.color];
+    const pct = (d.qty / total) * 100;
+    return `<div class="dist-seg" style="flex-basis:${pct}%;background:${c.border}">${d.qty}</div>`;
+  }).join('');
+
+  const legend = active.map(d => {
+    const c = PALETTE[d.color];
+    const pct = Math.round((d.qty / total) * 100);
+    return `<span class="dist-item">
+      <span class="dist-dot" style="background:${c.border}"></span>
+      <span>${escHtml(d.name)} — ${d.qty} (${pct}%)</span>
+    </span>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="dist-title">Distribuição dos pratos no mês</div>
+    <div class="dist-bar">${bar}</div>
+    <div class="dist-legend">${legend}</div>`;
 }
 
 // ── Calendar render ────────────────────────────────────────────
@@ -886,16 +1256,19 @@ function renderCal() {
   const errEl = document.getElementById('dateErr');
 
   if (!start) {
+    // Se o campo de data tem algo digitado mas não é segunda-feira,
+    // mostra o erro; se está vazio, não mostra nada (usuário ainda
+    // nem tentou escolher uma data).
     errEl.textContent = document.getElementById('startDate').value ? 'Escolha uma segunda-feira.' : '';
     container.innerHTML = '';
     return;
   }
   errEl.textContent = '';
 
-  const today = new Date(); today.setHours(0,0,0,0);
+  const today = new Date(); today.setHours(0,0,0,0); // zera a hora para comparar só a data
   const days = getDays(start);
-  const dayNames = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
-  const dowShortNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const dayNames = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];             // cabeçalho da grade (desktop)
+  const dowShortNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];        // rótulo ao lado do número (mobile) — índice = date.getDay()
 
   let html = '<div class="cal-grid">';
   dayNames.forEach(n => { html += `<div class="cal-dh">${n}</div>`; });
@@ -903,7 +1276,7 @@ function renderCal() {
   days.forEach((date, idx) => {
     const isToday = date.getTime() === today.getTime();
     const dow = date.getDay();
-    const isMonthStart = idx === 0 || date.getDate() === 1;
+    const isMonthStart = idx === 0 || date.getDate() === 1; // primeiro dia exibido, OU dia 1 de qualquer mês
 
     let monthTagHtml = '';
     if (isMonthStart) {
@@ -922,20 +1295,27 @@ function renderCal() {
     </div>`;
   });
 
+  // Completa a última linha da grade com células vazias (invisíveis,
+  // ver .cal-day.empty) para o grid CSS não "esticar" a última célula
+  // real até a 7ª coluna.
   const ld = dayOfWeekMon(days[days.length - 1].getDay());
   for (let e = 0; e < (ld < 6 ? 6 - ld : 0); e++) html += `<div class="cal-day empty"></div>`;
   html += '</div>';
 
   container.innerHTML = html;
-  enableCalDragAndDrop();
+  enableCalDragAndDrop(); // reata os listeners de arraste, pois o HTML foi todo recriado agora
   updateSummary();
   renderLegend();
+  renderDistribution();
 }
 
+// Monta o HTML de um único slot (almoço OU janta de um dia). Recebe o
+// índice do dia na grade (dayIdx), qual refeição ('al'/'jan'), a Date
+// e o rótulo a mostrar ("almoço"/"janta").
 function renderMealSlot(dayIdx, meal, date, label) {
   const entry = calPlan ? calPlan[dayIdx] : null;
-  const val = entry ? entry[meal] : null;
-  const isDelivery = date.getDay() === 5 && meal === 'jan';
+  const val = entry ? entry[meal] : null; // id do prato, 'NOOPT', ou null
+  const isDelivery = date.getDay() === 5 && meal === 'jan'; // toda sexta à noite é delivery
   let inner;
 
   if (val === 'NOOPT') {
@@ -944,10 +1324,18 @@ function renderMealSlot(dayIdx, meal, date, label) {
     const dish = val ? dishes.find(d => d.id === val) : null;
     if (dish) {
       const c = PALETTE[dish.color];
+      // `draggable-slot` é um atributo customizado (não é o `draggable`
+      // nativo do HTML) usado só como "marcador" para o JS de
+      // drag-and-drop encontrar quais elementos podem ser arrastados
+      // (ver enableCalDragAndDrop). data-day/data-meal identificam a
+      // posição deste pill para o handler de soltar (drop) saber de
+      // onde ele veio e para onde foi.
       inner = `<span class="meal-pill${isDelivery ? ' delivery' : ''}" draggable-slot
         data-day="${dayIdx}" data-meal="${meal}"
-        style="background:${c.bg};color:${c.text}">${isDelivery ? '<span class="delivery-badge" title="Delivery">🛵</span>' : ''}${escHtml(dish.name)}</span>`;
+        style="background:${c.bg};color:${c.text}">${escHtml(dish.name)}</span>`;
     } else {
+      // calPlan existe mas esse slot ficou vazio (pool acabou) → "—".
+      // calPlan ainda não existe (nunca clicou em "Distribuir") → "···".
       inner = `<span class="${calPlan ? 'meal-none' : 'meal-empty'}">${calPlan ? '—' : '···'}</span>`;
     }
   }
@@ -959,55 +1347,71 @@ function renderMealSlot(dayIdx, meal, date, label) {
 }
 
 // ── Drag-and-drop (mouse + touch via Pointer Events) ─────────────
-let dragState = null;
+// Implementado "na mão" com a Pointer Events API (em vez da API nativa
+// de Drag and Drop do HTML) porque a API nativa não funciona bem em
+// touch/mobile. Pointer Events unifica mouse, caneta e toque num único
+// conjunto de eventos (pointerdown/move/up), então o mesmo código
+// funciona em desktop e celular.
+let dragState = null; // guarda tudo sobre o arraste em andamento (null = nenhum arraste ativo)
 
+// Depois de cada renderCal(), o HTML dos pills é todo recriado — por
+// isso os listeners de clique precisam ser reanexados toda vez.
 function enableCalDragAndDrop() {
   document.querySelectorAll('#calContainer .meal-pill[draggable-slot]').forEach(el => {
     el.addEventListener('pointerdown', onDragPointerDown);
   });
 }
 
+// Início do arraste: cria uma cópia visual (o "ghost") do pill que vai
+// seguir o ponteiro, e guarda em `dragState` de onde o arraste começou.
 function onDragPointerDown(e) {
-  if (!calPlan) return;
-  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  if (!calPlan) return; // sem distribuição feita, não faz sentido arrastar nada
+  if (e.pointerType === 'mouse' && e.button !== 0) return; // só botão esquerdo do mouse
   const pill = e.currentTarget;
   e.preventDefault();
 
   const rect = pill.getBoundingClientRect();
   const ghost = pill.cloneNode(true);
   ghost.classList.add('drag-ghost');
-  ghost.removeAttribute('draggable-slot');
+  ghost.removeAttribute('draggable-slot'); // o ghost não deve iniciar um novo arraste sozinho
   ghost.style.position = 'fixed';
   ghost.style.width = rect.width + 'px';
   ghost.style.left = rect.left + 'px';
   ghost.style.top = rect.top + 'px';
-  ghost.style.pointerEvents = 'none';
+  ghost.style.pointerEvents = 'none'; // o ghost não pode "roubar" eventos de mouse/toque
   ghost.style.zIndex = '1000';
   document.body.appendChild(ghost);
 
-  pill.classList.add('dragging');
+  pill.classList.add('dragging'); // deixa o original "apagado" (opacity) enquanto arrasta
 
   dragState = {
-    srcDay: +pill.dataset.day,
-    srcMeal: pill.dataset.meal,
+    srcDay: +pill.dataset.day,   // dia de origem (o "+" converte a string do dataset para número)
+    srcMeal: pill.dataset.meal,  // refeição de origem
     pill, ghost,
-    offsetX: e.clientX - rect.left,
+    offsetX: e.clientX - rect.left, // onde dentro do pill o dedo/mouse tocou, para o ghost não "pular"
     offsetY: e.clientY - rect.top,
-    lastTarget: null,
+    lastTarget: null,            // último .meal-slot sobrevoado durante o arraste
   };
 
+  // setPointerCapture garante que os próximos eventos deste ponteiro
+  // continuem chegando neste elemento mesmo se o dedo/mouse sair dele.
   pill.setPointerCapture(e.pointerId);
   pill.addEventListener('pointermove', onDragPointerMove);
   pill.addEventListener('pointerup', onDragPointerUp);
   pill.addEventListener('pointercancel', onDragPointerUp);
 }
 
+// A cada movimento durante o arraste: reposiciona o ghost e descobre
+// sobre qual .meal-slot o ponteiro está agora, para destacá-lo.
 function onDragPointerMove(e) {
   if (!dragState) return;
   const { ghost, offsetX, offsetY } = dragState;
   ghost.style.left = (e.clientX - offsetX) + 'px';
   ghost.style.top = (e.clientY - offsetY) + 'px';
 
+  // Para descobrir o que está "embaixo" do ponteiro é preciso escondar
+  // o ghost por um instante — senão elementFromPoint acharia o próprio
+  // ghost (que está sempre embaixo do cursor) em vez do slot real.
   ghost.style.display = 'none';
   const under = document.elementFromPoint(e.clientX, e.clientY);
   ghost.style.display = '';
@@ -1020,6 +1424,9 @@ function onDragPointerMove(e) {
   dragState.lastTarget = slot;
 }
 
+// Fim do arraste (soltar o dedo/botão): limpa o ghost e os listeners
+// temporários e, se soltou em cima de um slot diferente do de origem,
+// efetiva a troca chamando swapSlots().
 function onDragPointerUp(e) {
   if (!dragState) return;
   const { pill, ghost, srcDay, srcMeal, lastTarget } = dragState;
@@ -1041,9 +1448,11 @@ function onDragPointerUp(e) {
   dragState = null;
 }
 
-// Swaps two slots' contents. Dropping onto an empty or "Sem opção" slot
-// simply moves the dish there (the source becomes empty rather than
-// inheriting the "Sem opção" marker).
+// Troca o conteúdo de dois slots do calPlan. Ao soltar em cima de um
+// slot vazio ou "Sem opção", o prato simplesmente se MUDA para lá (a
+// origem fica vazia) em vez do destino herdar o marcador "Sem opção" —
+// senão, arrastar um prato para um domingo faria ele "sumir" para
+// sempre marcado como bloqueado.
 function swapSlots(srcDay, srcMeal, dstDay, dstMeal) {
   const srcEntry = calPlan[srcDay];
   const dstEntry = calPlan[dstDay];
@@ -1051,27 +1460,34 @@ function swapSlots(srcDay, srcMeal, dstDay, dstMeal) {
   const dstVal = dstEntry[dstMeal];
   srcEntry[srcMeal] = (dstVal === 'NOOPT') ? null : dstVal;
   dstEntry[dstMeal] = srcVal;
-  renderCal();
+  renderCal(); // redesenha tudo para refletir a troca
 }
 
 // ── Init ───────────────────────────────────────────────────────
+// Roda uma única vez, assim que o <script> carrega (é uma IIFE —
+// "Immediately Invoked Function Expression" — daí os parênteses
+// envolvendo `function init(){...}` e chamando ela mesma no final).
 (function init() {
-  // Set start date to nearest past or current Monday
+  // Preenche o campo de data com a segunda-feira mais próxima (hoje,
+  // se hoje já for segunda, ou a última segunda passada).
   const today = new Date();
   const dow = today.getDay();
-  const diff = dow === 0 ? 6 : dow - 1;
+  const diff = dow === 0 ? 6 : dow - 1; // quantos dias voltar até a segunda anterior
   const monday = new Date(today);
   monday.setDate(today.getDate() - diff);
-  document.getElementById('startDate').value = monday.toISOString().slice(0, 10);
+  document.getElementById('startDate').value = monday.toISOString().slice(0, 10); // formato yyyy-mm-dd exigido pelo <input type="date">
   document.getElementById('startDate').addEventListener('change', () => {
-    calPlan = null;
+    calPlan = null; // mudou a data de início → a distribuição antiga não vale mais
     updateSummary();
     renderCal();
   });
-  renderDishes();
+  renderDishes(); // primeira renderização da lista de pratos (a aba ativa ao carregar)
 })();
 
 // ── PWA: service worker registration ────────────────────────────
+// Service workers só funcionam em HTTPS (ou localhost, para
+// desenvolvimento) — daí a checagem de protocolo/hostname. Registrar
+// o sw.js é o que permite o app funcionar offline e ser "instalado".
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(() => {});
